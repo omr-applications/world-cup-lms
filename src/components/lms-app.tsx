@@ -141,7 +141,7 @@ function AuthScreen() {
           setNotice("Password reset. Signing you in now.");
         }
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Auth request failed.");
+        setError(authErrorMessage(caught, mode));
       }
     });
   }
@@ -292,6 +292,28 @@ function AuthScreen() {
       </div>
     </main>
   );
+}
+
+function authErrorMessage(caught: unknown, mode: AuthMode) {
+  const message = caught instanceof Error ? caught.message : String(caught);
+
+  if (mode === "signUp" && /server error|already exists|account/i.test(message)) {
+    return "An account already exists for that email. Switch to sign in instead.";
+  }
+  if (mode === "signIn" && /server error|invalid|account|credentials/i.test(message)) {
+    return "Could not sign in. Check your email and password, or reset your password.";
+  }
+  if (mode === "resetRequest" && /server error|invalidaccountid|account/i.test(message)) {
+    return "No account was found for that email. Check the address or create an account.";
+  }
+  if (mode === "resetRequest" && /resend_api_key|not configured|password reset email/i.test(message)) {
+    return "Password reset email is not configured yet. Ask the app owner to add the email sending key.";
+  }
+  if (mode === "resetVerify" && /server error|invalid|code/i.test(message)) {
+    return "That reset code did not work. Check the code and try again.";
+  }
+
+  return message || "Auth request failed.";
 }
 
 function SetupView({
