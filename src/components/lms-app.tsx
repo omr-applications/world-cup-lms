@@ -170,7 +170,7 @@ function AuthScreen() {
           </div>
           <div className="max-w-2xl">
             <h1 className="text-4xl font-black tracking-normal text-white sm:text-6xl">
-              Pick winners by match day. Survive until the final player falls.
+              Pick winners by round or match day. Survive until the final player falls.
             </h1>
             <p className="mt-3 text-base font-medium leading-7 text-white/78 sm:mt-4">
               Create private World Cup groups, share a join code, lock picks by kickoff, and let host-entered
@@ -687,6 +687,12 @@ function GroupWorkspace({
   const activeMembers = detail.members.filter((member) => member.membership.status === "active").length;
   const eliminatedMembers = detail.members.filter((member) => member.membership.status === "eliminated").length;
   const scheduleMode = detail.group.scheduleMode ?? "day";
+  const pickTitle =
+    scheduleMode === "round" ? `${activePickWindow?.label ?? "Round"} picks` : "Match day picks";
+  const pickDescription =
+    scheduleMode === "round"
+      ? "Choose one winner from all fixtures in this round. You can edit until your selected match kicks off."
+      : "Choose one winner from this day. You can edit until your selected match kicks off.";
 
   return (
     <div className="grid content-start gap-3 sm:gap-5">
@@ -750,11 +756,9 @@ function GroupWorkspace({
             <section className="grid gap-3 sm:gap-4">
               <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h3 className="text-3xl font-black leading-none text-black sm:text-4xl">
-                    {scheduleMode === "round" ? "Round picks" : "Match day picks"}
-                  </h3>
+                  <h3 className="text-3xl font-black leading-none text-black sm:text-4xl">{pickTitle}</h3>
                   <p className="mt-1 text-base leading-5 text-muted sm:text-lg">
-                    Choose one winner from this {scheduleMode === "round" ? "round" : "day"}. You can edit until your selected match kicks off.
+                    {pickDescription}
                   </p>
                 </div>
                 <Select value={activePickWindowKey} onChange={(event) => setPickWindowKey(event.target.value)} className="sm:max-w-60">
@@ -964,7 +968,11 @@ function MatchDay({
           <div className="flex items-center gap-2">
             <Icon name="speed" className="text-white" size={17} />
             <p className="text-base font-bold leading-none sm:text-lg">
-              {dayPick?.team?.name ? `Saved: ${dayPick.team.name}` : `Pick one team to win ${scheduleMode === "round" ? "this round" : "today"}`}
+              {dayPick?.team?.name
+                ? `Saved: ${dayPick.team.name}`
+                : scheduleMode === "round"
+                  ? `Pick one team for ${pickWindowLabel}`
+                  : "Pick one team to win today"}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
