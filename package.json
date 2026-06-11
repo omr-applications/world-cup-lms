@@ -1,0 +1,35 @@
+{
+  "name": "world-cup-lms",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "convex": "convex dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "generate:auth-keys": "node scripts/generate-auth-keys.mjs"
+  },
+  "dependencies": {
+    "@auth/core": "^0.41.1",
+    "@convex-dev/auth": "^0.0.94",
+    "@material-symbols/svg-400": "^0.44.12",
+    "clsx": "^2.1.1",
+    "convex": "^1.41.0",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.8"
+  }
+}

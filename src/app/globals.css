@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+
+:root {
+  --background: #f7f7f5;
+  --foreground: #111111;
+  --muted: #6f6f6f;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-border: #e7e7e2;
+  --accent: #111111;
+  --accent-foreground: #ffffff;
+  --danger: #111111;
+  --success: #111111;
+  --sun: #111111;
+  --grass: #111111;
+  --sky: #111111;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-sun: var(--sun);
+  --color-grass: var(--grass);
+  --color-sky: var(--sky);
+  --font-sans: var(--font-teko), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-teko), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+}
+
+body {
+  background:
+    linear-gradient(135deg, rgba(17, 17, 17, 0.025) 0 18%, transparent 18% 42%, rgba(17, 17, 17, 0.018) 42% 58%, transparent 58%),
+    linear-gradient(180deg, #fafaf8 0%, #f5f5f2 100%);
+  color: var(--foreground);
+  font-family: var(--font-teko), ui-sans-serif, system-ui, sans-serif;
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(120deg, rgba(17, 17, 17, 0.025) 0 1px, transparent 1px 36px),
+    linear-gradient(0deg, transparent 0 48%, rgba(17, 17, 17, 0.025) 48% 52%, transparent 52%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: #111111;
+  color: #ffffff;
+}
+
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}

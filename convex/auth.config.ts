@@ -1,0 +1,10 @@
+import type { AuthConfig } from "convex/server";
+
+export default {
+  providers: [
+    {
+      domain: process.env.CONVEX_SITE_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL ?? "",
+      applicationID: "convex",
+    },
+  ],
+} satisfies AuthConfig;
