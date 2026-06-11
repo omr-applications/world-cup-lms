@@ -1229,31 +1229,68 @@ function TeamFlag({ team, size = "md" }: { team: TeamForUi; size?: "sm" | "md" |
       aria-label={`${team?.name ?? "Team"} flag`}
       role="img"
     >
-      <span className={`${emojiClass} block -translate-y-[0.02em] scale-110 leading-[0.68]`} aria-hidden="true">
-        {flagEmoji ?? code}
-      </span>
+      {team?.flagUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={team.flagUrl} alt="" className="h-full w-full object-contain" loading="lazy" />
+      ) : (
+        <span className={`${emojiClass} block -translate-y-[0.02em] scale-110 leading-[0.68]`} aria-hidden="true">
+          {flagEmoji ?? code}
+        </span>
+      )}
     </span>
   );
 }
 
 function getTeamFlagEmoji(code: string) {
   const flags: Record<string, string> = {
+    ALG: "🇩🇿",
     ARG: "🇦🇷",
     AUS: "🇦🇺",
     AUT: "🇦🇹",
+    BEL: "🇧🇪",
     BIH: "🇧🇦",
+    BRA: "🇧🇷",
     CAN: "🇨🇦",
+    CIV: "🇨🇮",
+    COD: "🇨🇩",
+    COL: "🇨🇴",
+    CPV: "🇨🇻",
     CRO: "🇭🇷",
+    CUW: "🇨🇼",
     CZE: "🇨🇿",
+    ECU: "🇪🇨",
+    EGY: "🇪🇬",
     ENG: "🏴",
+    ESP: "🇪🇸",
+    FRA: "🇫🇷",
+    GER: "🇩🇪",
+    GHA: "🇬🇭",
+    HAI: "🇭🇹",
+    IRN: "🇮🇷",
+    IRQ: "🇮🇶",
+    JOR: "🇯🇴",
+    JPN: "🇯🇵",
     KOR: "🇰🇷",
+    KSA: "🇸🇦",
+    MAR: "🇲🇦",
     MEX: "🇲🇽",
+    NED: "🇳🇱",
+    NOR: "🇳🇴",
+    NZL: "🇳🇿",
+    PAN: "🇵🇦",
     PAR: "🇵🇾",
+    POR: "🇵🇹",
+    QAT: "🇶🇦",
     RSA: "🇿🇦",
+    SCO: "🏴",
+    SEN: "🇸🇳",
+    SUI: "🇨🇭",
     SWE: "🇸🇪",
     TUN: "🇹🇳",
     TUR: "🇹🇷",
+    URU: "🇺🇾",
     USA: "🇺🇸",
+    UZB: "🇺🇿",
   };
 
   return flags[code];
