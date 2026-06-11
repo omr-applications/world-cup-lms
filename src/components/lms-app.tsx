@@ -12,6 +12,7 @@ type GroupId = Id<"groups">;
 type MatchId = Id<"matches">;
 type TeamId = Id<"teams">;
 type GroupTab = "matches" | "table" | "stats" | "setup";
+type AuthMode = "signIn" | "signUp" | "resetRequest" | "resetVerify";
 type MineGroups = NonNullable<ReturnType<typeof useQuery<typeof api.groups.getMine>>>;
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -105,23 +106,50 @@ function LoadingScreen() {
 
 function AuthScreen() {
   const { signIn } = useAuthActions();
-  const [mode, setMode] = useState<"signIn" | "signUp">("signUp");
+  const [mode, setMode] = useState<AuthMode>("signUp");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [resetEmail, setResetEmail] = useState("");
   const [isPending, startTransition] = useTransition();
+  const isResetMode = mode === "resetRequest" || mode === "resetVerify";
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
     const formData = new FormData(event.currentTarget);
-    formData.set("flow", mode);
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    if (email) {
+      setResetEmail(email);
+    }
+
+    if (mode === "resetRequest") {
+      formData.set("flow", "reset");
+    } else if (mode === "resetVerify") {
+      formData.set("flow", "reset-verification");
+    } else {
+      formData.set("flow", mode);
+    }
 
     startTransition(async () => {
       try {
         await signIn("password", formData);
+        if (mode === "resetRequest") {
+          setMode("resetVerify");
+          setNotice("Reset code sent. Check your email and enter the code below.");
+        } else if (mode === "resetVerify") {
+          setNotice("Password reset. Signing you in now.");
+        }
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not sign in.");
+        setError(caught instanceof Error ? caught.message : "Auth request failed.");
       }
     });
+  }
+
+  function switchMode(nextMode: AuthMode) {
+    setMode(nextMode);
+    setError(null);
+    setNotice(null);
   }
 
   return (
@@ -164,22 +192,43 @@ function AuthScreen() {
         </section>
 
         <Panel className="p-4 sm:p-5">
+          {isResetMode ? (
+            <div className="mb-5">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 text-sm font-black text-muted transition hover:text-black"
+                onClick={() => switchMode("signIn")}
+              >
+                <Icon name="logout" size={15} />
+                Back to sign in
+              </button>
+              <h2 className="mt-4 text-3xl font-black leading-none">
+                {mode === "resetRequest" ? "Reset password" : "Enter reset code"}
+              </h2>
+              <p className="mt-2 text-base leading-5 text-muted">
+                {mode === "resetRequest"
+                  ? "We will email you a short code to set a new password."
+                  : "Use the code from your email and choose a new password."}
+              </p>
+            </div>
+          ) : (
           <div className="mb-5 flex rounded-full bg-neutral-100 p-1">
             <button
               type="button"
               className={`min-h-10 flex-1 rounded-full px-3 text-sm font-extrabold ${mode === "signUp" ? "bg-white text-black shadow-sm" : "text-muted"}`}
-              onClick={() => setMode("signUp")}
+              onClick={() => switchMode("signUp")}
             >
               Sign up
             </button>
             <button
               type="button"
               className={`min-h-10 flex-1 rounded-full px-3 text-sm font-extrabold ${mode === "signIn" ? "bg-white text-black shadow-sm" : "text-muted"}`}
-              onClick={() => setMode("signIn")}
+              onClick={() => switchMode("signIn")}
             >
               Sign in
             </button>
           </div>
+          )}
           <form className="grid gap-4" onSubmit={submit}>
             {mode === "signUp" ? (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -192,21 +241,51 @@ function AuthScreen() {
               </div>
             ) : null}
             <Field label="Email">
-              <Input name="email" type="email" autoComplete="email" required placeholder="you@example.com" />
-            </Field>
-            <Field label="Password">
               <Input
-                name="password"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@example.com"
+                defaultValue={mode === "resetVerify" ? resetEmail : undefined}
+              />
+            </Field>
+            {mode === "resetVerify" ? (
+              <Field label="Reset code">
+                <Input name="code" type="text" autoComplete="one-time-code" required placeholder="123456" />
+              </Field>
+            ) : null}
+            {mode !== "resetRequest" ? (
+            <Field label={mode === "resetVerify" ? "New password" : "Password"}>
+              <Input
+                name={mode === "resetVerify" ? "newPassword" : "password"}
                 type="password"
-                autoComplete={mode === "signUp" ? "new-password" : "current-password"}
+                autoComplete={mode === "signIn" ? "current-password" : "new-password"}
                 minLength={8}
                 required
               />
             </Field>
+            ) : null}
+            {mode === "signIn" ? (
+              <button
+                type="button"
+                className="-mt-1 justify-self-start text-sm font-black text-muted transition hover:text-black"
+                onClick={() => switchMode("resetRequest")}
+              >
+                Forgot password?
+              </button>
+            ) : null}
+            {notice ? <p className="rounded-2xl bg-black px-3 py-2 text-sm font-semibold text-white">{notice}</p> : null}
             {error ? <p className="rounded-2xl bg-neutral-100 px-3 py-2 text-sm font-semibold text-black ring-1 ring-neutral-200">{error}</p> : null}
             <Button type="submit" disabled={isPending}>
               {isPending ? <Icon name="progress_activity" className="animate-spin" size={16} /> : <Icon name="shield" size={16} />}
-              {mode === "signUp" ? "Create account" : "Sign in"}
+              {mode === "signUp"
+                ? "Create account"
+                : mode === "resetRequest"
+                  ? "Send reset code"
+                  : mode === "resetVerify"
+                    ? "Reset password"
+                    : "Sign in"}
             </Button>
           </form>
         </Panel>

@@ -30,6 +30,13 @@ FIFA_SCORES_FEED_URL=
 FIFA_FIXTURES_FEED_URL=
 ```
 
+Password reset emails use Resend from Convex Auth. Set these in the Convex deployment environment before using the forgot-password flow:
+
+```bash
+RESEND_API_KEY=
+AUTH_EMAIL_FROM="World Cup LMS <no-reply@example.com>"
+```
+
 Start both Convex and Next.js during development:
 
 ```bash
@@ -52,6 +59,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - World Cup 2026 only.
 - Day-based Last Man Standing rounds.
 - Email/password auth through Convex Auth.
+- Forgot-password flow with emailed reset codes.
 - Host-created groups with shareable join codes.
 - One pick per group per day, with previously picked teams blocked per group.
 - Draws, losses, and missed picks eliminate a player.
