@@ -14,6 +14,7 @@ import type * as groups from "../groups.js";
 import type * as host from "../host.js";
 import type * as http from "../http.js";
 import type * as matches from "../matches.js";
+import type * as pickWindows from "../pickWindows.js";
 import type * as picks from "../picks.js";
 import type * as results from "../results.js";
 import type * as rules from "../rules.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   host: typeof host;
   http: typeof http;
   matches: typeof matches;
+  pickWindows: typeof pickWindows;
   picks: typeof picks;
   results: typeof results;
   rules: typeof rules;

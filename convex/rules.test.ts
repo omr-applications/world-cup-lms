@@ -9,6 +9,7 @@ import {
   selectedTeamIsInMatch,
   type MatchForRules,
 } from "./rules";
+import { roundWindowForMatch } from "./pickWindows";
 import { normalizeFixtureFeed, normalizeScoreFeed } from "./scoreFeed";
 
 const teamA = "team_a" as Id<"teams">;
@@ -42,6 +43,23 @@ describe("LMS rule helpers", () => {
         [{ dayKey: "2026-06-11", teamId: teamA, matchId: matchA, status: "pending" }],
         teamA,
         "2026-06-11",
+      ),
+    ).toBe(false);
+  });
+
+  it("blocks teams already used in previous pick windows", () => {
+    expect(
+      hasTeamAlreadyBeenUsed(
+        [{ dayKey: "2026-06-11", pickWindowKey: "group-round-1", teamId: teamA, matchId: matchA, status: "won" }],
+        teamA,
+        "group-round-2",
+      ),
+    ).toBe(true);
+    expect(
+      hasTeamAlreadyBeenUsed(
+        [{ dayKey: "2026-06-11", pickWindowKey: "group-round-1", teamId: teamA, matchId: matchA, status: "pending" }],
+        teamA,
+        "group-round-1",
       ),
     ).toBe(false);
   });
@@ -93,6 +111,14 @@ describe("LMS rule helpers", () => {
     expect(allMatchesHaveKickedOff([match({ kickoffAt: 1000 }), match({ kickoffAt: 1200 })], 1200)).toBe(true);
     expect(allMatchesHaveKickedOff([match({ kickoffAt: 1000 }), match({ kickoffAt: 1200 })], 1199)).toBe(false);
     expect(allMatchesHaveKickedOff([], 9999)).toBe(false);
+  });
+});
+
+describe("pick windows", () => {
+  it("normalizes World Cup rounds into LMS pick windows", () => {
+    expect(roundWindowForMatch(match({ round: "Group Round 1" })).key).toBe("group-round-1");
+    expect(roundWindowForMatch(match({ round: "Round of 32" })).label).toBe("Last 32");
+    expect(roundWindowForMatch(match({ round: "Quarter-final" })).key).toBe("quarter-finals");
   });
 });
 

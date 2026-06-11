@@ -3,6 +3,8 @@ import type { Id } from "./_generated/dataModel";
 export type MatchForRules = {
   _id: Id<"matches">;
   dayKey: string;
+  stage?: string;
+  round?: string;
   kickoffAt: number;
   homeTeamId: Id<"teams">;
   awayTeamId: Id<"teams">;
@@ -12,6 +14,7 @@ export type MatchForRules = {
 
 export type PickForRules = {
   dayKey: string;
+  pickWindowKey?: string;
   teamId: Id<"teams">;
   matchId: Id<"matches">;
   status: "pending" | "won" | "lost";
@@ -21,14 +24,18 @@ export type PickForRules = {
 export function hasTeamAlreadyBeenUsed(
   picks: PickForRules[],
   teamId: Id<"teams">,
-  currentDayKey?: string,
+  currentPickWindowKey?: string,
   selectionResetAt?: number,
 ) {
   return picks.some(
-    (pick) =>
-      pick.teamId === teamId &&
-      pick.dayKey !== currentDayKey &&
-      (!selectionResetAt || !pick.createdAt || pick.createdAt > selectionResetAt),
+    (pick) => {
+      const pickWindowKey = pick.pickWindowKey ?? pick.dayKey;
+      return (
+        pick.teamId === teamId &&
+        pickWindowKey !== currentPickWindowKey &&
+        (!selectionResetAt || !pick.createdAt || pick.createdAt > selectionResetAt)
+      );
+    },
   );
 }
 

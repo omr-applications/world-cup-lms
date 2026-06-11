@@ -1,6 +1,15 @@
 import { v } from "convex/values";
-import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+import {
+  dayWindow,
+  groupScheduleMode,
+  mergePickWindows,
+  pickWindowKeyForPick,
+  roundWindowForMatch,
+  type ScheduleMode,
+} from "./pickWindows";
 import { ensureProfile, generateJoinCode, normalizeJoinCode, requireUserId } from "./utils";
 
 async function uniqueJoinCode(ctx: MutationCtx) {
@@ -18,11 +27,38 @@ async function uniqueJoinCode(ctx: MutationCtx) {
   throw new Error("Could not generate a unique group code.");
 }
 
+async function collectPickWindows(
+  ctx: MutationCtx | QueryCtx,
+  tournamentId: Id<"tournaments">,
+  scheduleMode: ScheduleMode,
+) {
+  const days = (
+    await ctx.db
+      .query("tournamentDays")
+      .withIndex("by_tournament", (q) => q.eq("tournamentId", tournamentId))
+      .collect()
+  ).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  if (scheduleMode === "day") {
+    return days.map(dayWindow);
+  }
+
+  const daysByKey = new Map(days.map((day) => [day.dayKey, day]));
+  const matches = await ctx.db
+    .query("matches")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", tournamentId))
+    .collect();
+
+  return mergePickWindows(matches.map((match) => roundWindowForMatch(match, daysByKey.get(match.dayKey))));
+}
+
 export const create = mutation({
   args: {
     name: v.string(),
     tournamentId: v.id("tournaments"),
     startDayKey: v.string(),
+    startPickWindowKey: v.optional(v.string()),
+    scheduleMode: v.optional(v.union(v.literal("day"), v.literal("round"))),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -33,14 +69,12 @@ export const create = mutation({
       throw new Error("Group name must be at least 3 characters.");
     }
 
-    const day = await ctx.db
-      .query("tournamentDays")
-      .withIndex("by_tournament_day", (q) =>
-        q.eq("tournamentId", args.tournamentId).eq("dayKey", args.startDayKey),
-      )
-      .unique();
-    if (!day) {
-      throw new Error("Choose a valid start day.");
+    const scheduleMode = args.scheduleMode ?? "round";
+    const pickWindows = await collectPickWindows(ctx, args.tournamentId, scheduleMode);
+    const requestedWindowKey = args.startPickWindowKey ?? args.startDayKey;
+    const startWindow = pickWindows.find((window) => window.key === requestedWindowKey);
+    if (!startWindow) {
+      throw new Error("Choose a valid start point.");
     }
 
     const now = Date.now();
@@ -50,7 +84,9 @@ export const create = mutation({
       code,
       hostUserId: userId,
       tournamentId: args.tournamentId,
-      startDayKey: args.startDayKey,
+      scheduleMode,
+      startDayKey: startWindow.firstDayKey,
+      startPickWindowKey: startWindow.key,
       status: "active",
       createdAt: now,
       updatedAt: now,
@@ -97,17 +133,15 @@ export const joinByCode = mutation({
       return group._id;
     }
 
-    const startDay = await ctx.db
-      .query("tournamentDays")
-      .withIndex("by_tournament_day", (q) =>
-        q.eq("tournamentId", group.tournamentId).eq("dayKey", group.startDayKey),
-      )
-      .unique();
+    const scheduleMode = groupScheduleMode(group);
+    const startWindow = (await collectPickWindows(ctx, group.tournamentId, scheduleMode)).find(
+      (window) => window.key === (group.startPickWindowKey ?? group.startDayKey),
+    );
 
-    if (!startDay) {
-      throw new Error("This group has an invalid start day.");
+    if (!startWindow) {
+      throw new Error("This group has an invalid start point.");
     }
-    if (Date.now() >= startDay.firstKickoffAt) {
+    if (Date.now() >= startWindow.firstKickoffAt) {
       throw new Error("Late joins are closed for this group.");
     }
 
@@ -181,9 +215,15 @@ export const getDetail = query({
       .query("tournamentDays")
       .withIndex("by_tournament", (q) => q.eq("tournamentId", group.tournamentId))
       .collect();
-    const playableDays = days
-      .filter((day) => day.sortOrder >= Number(group.startDayKey.replaceAll("-", "")))
+    const sortedDays = days.sort((a, b) => a.sortOrder - b.sortOrder);
+    const scheduleMode = groupScheduleMode(group);
+    const allPickWindows = await collectPickWindows(ctx, group.tournamentId, scheduleMode);
+    const startWindow = allPickWindows.find((window) => window.key === (group.startPickWindowKey ?? group.startDayKey));
+    const pickWindows = allPickWindows.filter((window) => !startWindow || window.sortOrder >= startWindow.sortOrder);
+    const playableDays = sortedDays
+      .filter((day) => !startWindow || day.sortOrder >= Number(startWindow.firstDayKey.replaceAll("-", "")))
       .sort((a, b) => a.sortOrder - b.sortOrder);
+    const daysByKey = new Map(sortedDays.map((day) => [day.dayKey, day]));
     const members = await ctx.db
       .query("memberships")
       .withIndex("by_group", (q) => q.eq("groupId", args.groupId))
@@ -214,7 +254,7 @@ export const getDetail = query({
       .collect();
     const myPicks = await Promise.all(
       currentPicks
-        .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+        .sort((a, b) => pickWindowKeyForPick(a).localeCompare(pickWindowKeyForPick(b)))
         .map(async (pick) => {
           const [team, match] = await Promise.all([ctx.db.get(pick.teamId), ctx.db.get(pick.matchId)]);
           const homeTeam = match ? await ctx.db.get(match.homeTeamId) : null;
@@ -222,17 +262,25 @@ export const getDetail = query({
           return { ...pick, team, match: match ? { ...match, homeTeam, awayTeam } : null };
         }),
     );
-    const matchesByDay = await Promise.all(
-      playableDays.map(async (day) => {
-        const matches = await ctx.db
-          .query("matches")
-          .withIndex("by_tournament_day", (q) =>
-            q.eq("tournamentId", group.tournamentId).eq("dayKey", day.dayKey),
-          )
-          .collect();
+    const allMatches = await ctx.db
+      .query("matches")
+      .withIndex("by_tournament", (q) => q.eq("tournamentId", group.tournamentId))
+      .collect();
+    const matchesByWindow = await Promise.all(
+      pickWindows.map(async (window) => {
+        const matches = allMatches.filter((match) => {
+          const matchWindow =
+            scheduleMode === "day" ? dayWindow(daysByKey.get(match.dayKey) ?? {
+              dayKey: match.dayKey,
+              label: match.dayKey,
+              sortOrder: Number(match.dayKey.replaceAll("-", "")),
+              firstKickoffAt: match.kickoffAt,
+            }) : roundWindowForMatch(match, daysByKey.get(match.dayKey));
+          return matchWindow.key === window.key;
+        });
 
         return {
-          dayKey: day.dayKey,
+          pickWindowKey: window.key,
           matches: await Promise.all(
             matches
               .sort((a, b) => a.kickoffAt - b.kickoffAt)
@@ -258,10 +306,15 @@ export const getDetail = query({
       tournament,
       currentMembership: membership,
       days: playableDays,
+      pickWindows,
       members: memberRows,
       standings,
       myPicks,
-      matchesByDay,
+      matchesByDay: matchesByWindow.map((window) => ({
+        dayKey: window.pickWindowKey,
+        matches: window.matches,
+      })),
+      matchesByWindow,
     };
   },
 });

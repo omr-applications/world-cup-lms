@@ -1,5 +1,6 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { dayWindow, groupScheduleMode, pickWindowKeyForPick, roundWindowForMatch } from "./pickWindows";
 import { allMatchesHaveKickedOff, pickOutcome } from "./rules";
 
 export async function applyMatchResult(
@@ -64,26 +65,54 @@ export async function applyMatchResult(
     }
   }
 
-  const dayMatches = await ctx.db
-    .query("matches")
-    .withIndex("by_tournament_day", (q) =>
-      q.eq("tournamentId", group.tournamentId).eq("dayKey", match.dayKey),
-    )
+  const scheduleMode = groupScheduleMode(group);
+  const days = await ctx.db
+    .query("tournamentDays")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", group.tournamentId))
     .collect();
+  const daysByKey = new Map(days.map((day) => [day.dayKey, day]));
+  const matchWindow =
+    scheduleMode === "day"
+      ? dayWindow(
+          daysByKey.get(match.dayKey) ?? {
+            dayKey: match.dayKey,
+            label: match.dayKey,
+            sortOrder: Number(match.dayKey.replaceAll("-", "")),
+            firstKickoffAt: match.kickoffAt,
+          },
+        )
+      : roundWindowForMatch(match, daysByKey.get(match.dayKey));
+  const tournamentMatches = await ctx.db
+    .query("matches")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", group.tournamentId))
+    .collect();
+  const windowMatches = tournamentMatches.filter((candidate) => {
+    const candidateWindow =
+      scheduleMode === "day"
+        ? dayWindow(
+            daysByKey.get(candidate.dayKey) ?? {
+              dayKey: candidate.dayKey,
+              label: candidate.dayKey,
+              sortOrder: Number(candidate.dayKey.replaceAll("-", "")),
+              firstKickoffAt: candidate.kickoffAt,
+            },
+          )
+        : roundWindowForMatch(candidate, daysByKey.get(candidate.dayKey));
+    return candidateWindow.key === matchWindow.key;
+  });
 
-  if (allMatchesHaveKickedOff(dayMatches, resultSyncedAt)) {
+  if (allMatchesHaveKickedOff(windowMatches, resultSyncedAt)) {
     const activeMembers = await ctx.db
       .query("memberships")
       .withIndex("by_group", (q) => q.eq("groupId", args.groupId))
       .collect();
 
     for (const member of activeMembers.filter((member) => member.status === "active")) {
-      const pick = await ctx.db
+      const memberPicks = await ctx.db
         .query("picks")
-        .withIndex("by_member_day", (q) =>
-          q.eq("membershipId", member._id).eq("dayKey", match.dayKey),
-        )
-        .unique();
+        .withIndex("by_member", (q) => q.eq("membershipId", member._id))
+        .collect();
+      const pick = memberPicks.find((memberPick) => pickWindowKeyForPick(memberPick) === matchWindow.key);
 
       if (!pick) {
         await ctx.db.patch(member._id, {

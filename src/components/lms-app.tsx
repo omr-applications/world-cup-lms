@@ -13,6 +13,7 @@ type MatchId = Id<"matches">;
 type TeamId = Id<"teams">;
 type GroupTab = "matches" | "table" | "stats" | "setup";
 type AuthMode = "signIn" | "signUp" | "resetRequest" | "resetVerify";
+type ScheduleMode = "day" | "round";
 type MineGroups = NonNullable<ReturnType<typeof useQuery<typeof api.groups.getMine>>>;
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -389,15 +390,20 @@ function CreateGroupPanel({ onCreated }: { onCreated: (groupId: GroupId) => void
   const tournaments = useQuery(api.tournaments.list);
   const createGroup = useMutation(api.groups.create);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>("");
-  const [selectedDayKey, setSelectedDayKey] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("round");
+  const [selectedPickWindowKey, setSelectedPickWindowKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const activeTournamentId = selectedTournamentId || tournaments?.[0]?._id || "";
   const selectedTournament = tournaments?.find((tournament) => tournament._id === activeTournamentId);
-  const activeDayKey =
-    selectedDayKey && selectedTournament?.days.some((day) => day.dayKey === selectedDayKey)
-      ? selectedDayKey
-      : selectedTournament?.days[0]?.dayKey ?? "";
+  const pickWindowOptions =
+    scheduleMode === "round"
+      ? selectedTournament?.roundWindows ?? []
+      : selectedTournament?.dayWindows ?? [];
+  const activePickWindow =
+    pickWindowOptions.find((window) => window.key === selectedPickWindowKey) ?? pickWindowOptions[0];
+  const activePickWindowKey = activePickWindow?.key ?? "";
+  const activeStartDayKey = activePickWindow?.firstDayKey ?? activePickWindowKey;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -410,7 +416,9 @@ function CreateGroupPanel({ onCreated }: { onCreated: (groupId: GroupId) => void
         const groupId = await createGroup({
           name,
           tournamentId: activeTournamentId as Id<"tournaments">,
-          startDayKey: activeDayKey,
+          scheduleMode,
+          startDayKey: activeStartDayKey,
+          startPickWindowKey: activePickWindowKey,
         });
         event.currentTarget.reset();
         onCreated(groupId);
@@ -434,7 +442,8 @@ function CreateGroupPanel({ onCreated }: { onCreated: (groupId: GroupId) => void
             onChange={(event) => {
               const nextTournament = tournaments?.find((tournament) => tournament._id === event.target.value);
               setSelectedTournamentId(event.target.value);
-              setSelectedDayKey(nextTournament?.days[0]?.dayKey ?? "");
+              const nextWindows = scheduleMode === "round" ? nextTournament?.roundWindows : nextTournament?.dayWindows;
+              setSelectedPickWindowKey(nextWindows?.[0]?.key ?? "");
             }}
           >
             {(tournaments ?? []).map((tournament) => (
@@ -444,17 +453,32 @@ function CreateGroupPanel({ onCreated }: { onCreated: (groupId: GroupId) => void
             ))}
           </Select>
         </Field>
-        <Field label="Start day">
-          <Select required value={activeDayKey} onChange={(event) => setSelectedDayKey(event.target.value)}>
-            {(selectedTournament?.days ?? []).map((day) => (
-              <option key={day._id} value={day.dayKey}>
-                {day.label}
+        <Field label="Pick cadence">
+          <Select
+            required
+            value={scheduleMode}
+            onChange={(event) => {
+              const nextMode = event.target.value as ScheduleMode;
+              setScheduleMode(nextMode);
+              const nextWindows = nextMode === "round" ? selectedTournament?.roundWindows : selectedTournament?.dayWindows;
+              setSelectedPickWindowKey(nextWindows?.[0]?.key ?? "");
+            }}
+          >
+            <option value="round">Per round</option>
+            <option value="day">Per day</option>
+          </Select>
+        </Field>
+        <Field label={scheduleMode === "round" ? "Start round" : "Start day"}>
+          <Select required value={activePickWindowKey} onChange={(event) => setSelectedPickWindowKey(event.target.value)}>
+            {pickWindowOptions.map((window) => (
+              <option key={window.key} value={window.key}>
+                {window.label}
               </option>
             ))}
           </Select>
         </Field>
         {error ? <p className="rounded-2xl bg-neutral-100 px-3 py-2 text-sm font-semibold text-black ring-1 ring-neutral-200">{error}</p> : null}
-        <Button type="submit" disabled={isPending || !activeTournamentId || !activeDayKey}>
+        <Button type="submit" disabled={isPending || !activeTournamentId || !activePickWindowKey}>
           {isPending ? <Icon name="progress_activity" className="animate-spin" size={16} /> : <Icon name="add" size={16} />}
           Create
         </Button>
@@ -607,22 +631,23 @@ function GroupWorkspace({
   onJoined: (groupId: GroupId) => void;
 }) {
   const detail = useQuery(api.groups.getDetail, groupId ? { groupId, clientVersion: 2 } : "skip");
-  const [dayKey, setDayKey] = useState("");
+  const [pickWindowKey, setPickWindowKey] = useState("");
   const [readyMatchPanelKey, setReadyMatchPanelKey] = useState("");
-  const activeDayKey = detail
-    ? dayKey && detail.days.some((day) => day.dayKey === dayKey)
-      ? dayKey
-      : detail.days[0]?.dayKey ?? ""
+  const activePickWindowKey = detail
+    ? pickWindowKey && detail.pickWindows.some((window) => window.key === pickWindowKey)
+      ? pickWindowKey
+      : detail.pickWindows[0]?.key ?? ""
     : "";
-  const matchPanelKey = `${groupId ?? "none"}:${activeDayKey}`;
-  const preloadedMatches = detail?.matchesByDay?.find((day) => day.dayKey === activeDayKey)?.matches;
+  const activePickWindow = detail?.pickWindows.find((window) => window.key === activePickWindowKey);
+  const matchPanelKey = `${groupId ?? "none"}:${activePickWindowKey}`;
+  const preloadedMatches = detail?.matchesByWindow?.find((window) => window.pickWindowKey === activePickWindowKey)?.matches;
   useEffect(() => {
-    if (activeTab !== "matches" || !activeDayKey || preloadedMatches) {
+    if (activeTab !== "matches" || !activePickWindowKey || preloadedMatches) {
       return;
     }
     const timeout = window.setTimeout(() => setReadyMatchPanelKey(matchPanelKey), 600);
     return () => window.clearTimeout(timeout);
-  }, [activeDayKey, activeTab, matchPanelKey, preloadedMatches]);
+  }, [activePickWindowKey, activeTab, matchPanelKey, preloadedMatches]);
 
   if (activeTab === "setup") {
     return (
@@ -661,6 +686,7 @@ function GroupWorkspace({
   const activeMatches = preloadedMatches;
   const activeMembers = detail.members.filter((member) => member.membership.status === "active").length;
   const eliminatedMembers = detail.members.filter((member) => member.membership.status === "eliminated").length;
+  const scheduleMode = detail.group.scheduleMode ?? "day";
 
   return (
     <div className="grid content-start gap-3 sm:gap-5">
@@ -677,7 +703,9 @@ function GroupWorkspace({
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-4xl font-black leading-[0.9] tracking-normal sm:text-6xl">{detail.group.name}</h2>
               </div>
-              <p className="mt-3 text-sm font-medium text-white/85">{detail.tournament?.name} · starts {detail.group.startDayKey}</p>
+              <p className="mt-3 text-sm font-medium text-white/85">
+                {detail.tournament?.name} · {scheduleMode === "round" ? "per round" : "per day"} · starts {detail.pickWindows[0]?.label ?? detail.group.startDayKey}
+              </p>
               <div className="mt-5 grid grid-cols-3 gap-2">
                 <HeroMetric label="Alive" value={activeMembers} />
                 <HeroMetric label="Out" value={eliminatedMembers} />
@@ -722,24 +750,28 @@ function GroupWorkspace({
             <section className="grid gap-3 sm:gap-4">
               <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h3 className="text-3xl font-black leading-none text-black sm:text-4xl">Match day picks</h3>
+                  <h3 className="text-3xl font-black leading-none text-black sm:text-4xl">
+                    {scheduleMode === "round" ? "Round picks" : "Match day picks"}
+                  </h3>
                   <p className="mt-1 text-base leading-5 text-muted sm:text-lg">
-                    Choose one winner. You can edit until your selected match kicks off.
+                    Choose one winner from this {scheduleMode === "round" ? "round" : "day"}. You can edit until your selected match kicks off.
                   </p>
                 </div>
-                <Select value={activeDayKey} onChange={(event) => setDayKey(event.target.value)} className="sm:max-w-60">
-                  {detail.days.map((day) => (
-                    <option key={day._id} value={day.dayKey}>
-                      {day.label}
+                <Select value={activePickWindowKey} onChange={(event) => setPickWindowKey(event.target.value)} className="sm:max-w-60">
+                  {detail.pickWindows.map((window) => (
+                    <option key={window.key} value={window.key}>
+                      {window.label}
                     </option>
                   ))}
                 </Select>
               </div>
-              {activeDayKey && (preloadedMatches || readyMatchPanelKey === matchPanelKey) ? (
+              {activePickWindowKey && (preloadedMatches || readyMatchPanelKey === matchPanelKey) ? (
                 <MatchDayContainer
                   key={matchPanelKey}
                   groupId={groupId}
-                  dayKey={activeDayKey}
+                  pickWindowKey={activePickWindowKey}
+                  pickWindowLabel={activePickWindow?.label ?? activePickWindowKey}
+                  scheduleMode={scheduleMode}
                   selectionResetAt={detail.group.selectionResetAt}
                   matches={activeMatches}
                   picks={myPicks}
@@ -793,22 +825,28 @@ function HeroMetric({ label, value }: { label: string; value: number | string })
 
 function MatchDayContainer({
   groupId,
-  dayKey,
+  pickWindowKey,
+  pickWindowLabel,
+  scheduleMode,
   selectionResetAt,
   matches,
   picks,
 }: {
   groupId: GroupId;
-  dayKey: string;
+  pickWindowKey: string;
+  pickWindowLabel: string;
+  scheduleMode: ScheduleMode;
   selectionResetAt?: number;
   matches?: MatchForUi[];
   picks?: PickForUi[];
 }) {
-  const fetchedMatches = useQuery(api.matches.listForGroupDay, matches ? "skip" : { groupId, dayKey });
+  const fetchedMatches = useQuery(api.matches.listForGroupWindow, matches ? "skip" : { groupId, pickWindowKey });
   return (
     <MatchDay
       groupId={groupId}
-      dayKey={dayKey}
+      pickWindowKey={pickWindowKey}
+      pickWindowLabel={pickWindowLabel}
+      scheduleMode={scheduleMode}
       selectionResetAt={selectionResetAt}
       matches={matches ?? fetchedMatches}
       picks={picks}
@@ -818,13 +856,17 @@ function MatchDayContainer({
 
 function MatchDay({
   groupId,
-  dayKey,
+  pickWindowKey,
+  pickWindowLabel,
+  scheduleMode,
   selectionResetAt,
   matches,
   picks,
 }: {
   groupId: GroupId;
-  dayKey: string;
+  pickWindowKey: string;
+  pickWindowLabel: string;
+  scheduleMode: ScheduleMode;
   selectionResetAt?: number;
   matches?: MatchForUi[];
   picks?: PickForUi[];
@@ -833,36 +875,37 @@ function MatchDay({
   const activeMatches = matches;
   const activePicks = picks ?? fetchedPicks;
   const makePick = useMutation(api.picks.upsert);
-  const dayPick = activePicks?.find((pick) => pick.dayKey === dayKey);
-  const [draftPick, setDraftPick] = useState<{ dayKey: string; matchId: MatchId; teamId: TeamId; teamName: string } | null>(null);
+  const dayPick = activePicks?.find((pick) => pickWindowKeyForUi(pick) === pickWindowKey);
+  const [draftPick, setDraftPick] = useState<{ dayKey: string; pickWindowKey: string; matchId: MatchId; teamId: TeamId; teamName: string } | null>(null);
   const usedTeamIds = useMemo(
     () =>
       new Set(
         (activePicks ?? [])
-          .filter((pick) => pick.dayKey !== dayKey && (!selectionResetAt || pick.createdAt > selectionResetAt))
+          .filter((pick) => pickWindowKeyForUi(pick) !== pickWindowKey && (!selectionResetAt || pick.createdAt > selectionResetAt))
           .map((pick) => pick.teamId),
       ),
-    [dayKey, activePicks, selectionResetAt],
+    [pickWindowKey, activePicks, selectionResetAt],
   );
   const usedPicks = useMemo(
     () =>
       (activePicks ?? [])
-        .filter((pick) => pick.dayKey !== dayKey && pick.team && (!selectionResetAt || pick.createdAt > selectionResetAt))
-        .map((pick) => ({ _id: pick._id, dayKey: pick.dayKey, team: pick.team })),
-    [dayKey, activePicks, selectionResetAt],
+        .filter((pick) => pickWindowKeyForUi(pick) !== pickWindowKey && pick.team && (!selectionResetAt || pick.createdAt > selectionResetAt))
+        .map((pick) => ({ _id: pick._id, label: formatPickWindowLabel(pick.pickWindowKey ?? pick.dayKey), team: pick.team })),
+    [pickWindowKey, activePicks, selectionResetAt],
   );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [clientNow] = useState(() => Date.now());
   const savedPick = dayPick?.team
     ? {
-        dayKey,
+        dayKey: dayPick.dayKey,
+        pickWindowKey,
         matchId: dayPick.matchId as MatchId,
         teamId: dayPick.teamId as TeamId,
         teamName: dayPick.team.name,
       }
     : null;
-  const activeDraftPick = draftPick?.dayKey === dayKey ? draftPick : savedPick;
+  const activeDraftPick = draftPick?.pickWindowKey === pickWindowKey ? draftPick : savedPick;
   const hasUnsavedPick = Boolean(
     activeDraftPick &&
       (!dayPick || dayPick.teamId !== activeDraftPick.teamId || dayPick.matchId !== activeDraftPick.matchId),
@@ -878,7 +921,8 @@ function MatchDay({
         setError(null);
         await makePick({
           groupId,
-          dayKey,
+          dayKey: activeDraftPick.dayKey,
+          pickWindowKey,
           matchId: activeDraftPick.matchId,
           teamId: activeDraftPick.teamId,
         });
@@ -905,8 +949,8 @@ function MatchDay({
             <Icon name="calendar_month" size={19} />
           </span>
           <div>
-            <p className="text-xl font-black leading-none text-black">No fixtures for this day</p>
-            <p className="mt-1 text-sm font-semibold text-muted">Try another World Cup day or re-check the seed data.</p>
+            <p className="text-xl font-black leading-none text-black">No fixtures for this {scheduleMode === "round" ? "round" : "day"}</p>
+            <p className="mt-1 text-sm font-semibold text-muted">Try another World Cup {scheduleMode === "round" ? "round" : "day"}.</p>
           </div>
         </div>
       </div>
@@ -920,7 +964,7 @@ function MatchDay({
           <div className="flex items-center gap-2">
             <Icon name="speed" className="text-white" size={17} />
             <p className="text-base font-bold leading-none sm:text-lg">
-              {dayPick?.team?.name ? `Saved: ${dayPick.team.name}` : "Pick one team to win"}
+              {dayPick?.team?.name ? `Saved: ${dayPick.team.name}` : `Pick one team to win ${scheduleMode === "round" ? "this round" : "today"}`}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -939,7 +983,7 @@ function MatchDay({
           </div>
         </div>
         <p className="mt-2 text-xs font-medium leading-5 text-white/75 sm:text-sm">
-          Previously picked teams are unavailable. Draws count as not winning.
+          {pickWindowLabel}. Previously picked teams are unavailable. Draws count as not winning.
         </p>
       </div>
 
@@ -973,7 +1017,8 @@ function MatchDay({
                   onSelect={() =>
                     match.homeTeam
                       ? setDraftPick({
-                          dayKey,
+                          dayKey: match.dayKey,
+                          pickWindowKey,
                           matchId: match._id as MatchId,
                           teamId: match.homeTeam._id as TeamId,
                           teamName: match.homeTeam.name ?? "Team",
@@ -997,7 +1042,8 @@ function MatchDay({
                   onSelect={() =>
                     match.awayTeam
                       ? setDraftPick({
-                          dayKey,
+                          dayKey: match.dayKey,
+                          pickWindowKey,
                           matchId: match._id as MatchId,
                           teamId: match.awayTeam._id as TeamId,
                           teamName: match.awayTeam.name ?? "Team",
@@ -1044,6 +1090,7 @@ type TeamWithIdForUi = (NonNullable<TeamForUi> & { _id: TeamId }) | null;
 
 type MatchForUi = {
   _id: MatchId;
+  dayKey: string;
   kickoffAt: number;
   status: "scheduled" | "complete";
   homeScore?: number;
@@ -1056,6 +1103,7 @@ type MatchForUi = {
 type PickForUi = {
   _id: Id<"picks">;
   dayKey: string;
+  pickWindowKey?: string;
   matchId: MatchId;
   teamId: TeamId;
   status: "pending" | "won" | "lost";
@@ -1064,7 +1112,25 @@ type PickForUi = {
   match: MatchForUi | null;
 };
 
-function UsedTeamsStrip({ picks }: { picks: Array<{ _id: string; dayKey: string; team: TeamForUi }> }) {
+function pickWindowKeyForUi(pick: { dayKey: string; pickWindowKey?: string }) {
+  return pick.pickWindowKey ?? pick.dayKey;
+}
+
+function formatPickWindowLabel(key: string) {
+  const labels: Record<string, string> = {
+    "group-round-1": "Group Round 1",
+    "group-round-2": "Group Round 2",
+    "group-round-3": "Group Round 3",
+    "round-of-32": "Last 32",
+    "round-of-16": "Last 16",
+    "quarter-finals": "Quarter-finals",
+    "semi-finals": "Semi-finals",
+    final: "Final",
+  };
+  return labels[key] ?? key;
+}
+
+function UsedTeamsStrip({ picks }: { picks: Array<{ _id: string; label: string; team: TeamForUi }> }) {
   if (picks.length === 0) {
     return (
       <div className="-mx-3 border-y border-neutral-200 bg-white/70 px-4 py-3 sm:mx-0 sm:rounded-[20px] sm:border">
@@ -1081,7 +1147,7 @@ function UsedTeamsStrip({ picks }: { picks: Array<{ _id: string; dayKey: string;
           <span key={pick._id} className="inline-flex shrink-0 items-center gap-2 rounded-full bg-neutral-100 px-3 py-2 text-sm font-bold text-neutral-700">
             <TeamFlag team={pick.team} size="sm" />
             {pick.team?.name ?? "Team"}
-            <span className="font-mono text-xs text-muted">{pick.dayKey}</span>
+            <span className="font-mono text-xs text-muted">{pick.label}</span>
           </span>
         ))}
       </div>
@@ -1254,7 +1320,7 @@ function GroupStats({
   const pending = livePicks.filter((pick) => pick.status === "pending").length;
   const usedTeams = livePicks
     .filter((pick) => pick.team)
-    .map((pick) => ({ _id: pick._id, dayKey: pick.dayKey, team: pick.team }));
+    .map((pick) => ({ _id: pick._id, label: formatPickWindowLabel(pick.pickWindowKey ?? pick.dayKey), team: pick.team }));
   const latestPick = livePicks.at(-1);
   const survivalRate = totalMembers > 0 ? Math.round((activeMembers / totalMembers) * 100) : 0;
 
@@ -1416,7 +1482,7 @@ function MyPicks({ groupId, selectionResetAt, picks: initialPicks }: { groupId: 
                 </Badge>
               </div>
               <p className="mt-1 text-xs text-muted">
-                {pick.dayKey} · {pick.match?.homeTeam?.code} vs {pick.match?.awayTeam?.code}
+                {formatPickWindowLabel(pick.pickWindowKey ?? pick.dayKey)} · {pick.match?.homeTeam?.code} vs {pick.match?.awayTeam?.code}
               </p>
             </div>
             );

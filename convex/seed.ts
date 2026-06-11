@@ -187,6 +187,8 @@ const fixtures = [
   {
     dayKey: "2026-06-11",
     label: "Thursday, June 11",
+    stage: "Group stage",
+    round: "Group Round 1",
     matches: [
       ["MEX", "RSA", "Mexico City", "2026-06-11T20:00:00.000Z"],
       ["KOR", "CZE", "Toronto", "2026-06-11T23:00:00.000Z"],
@@ -195,6 +197,8 @@ const fixtures = [
   {
     dayKey: "2026-06-12",
     label: "Friday, June 12",
+    stage: "Group stage",
+    round: "Group Round 1",
     matches: [
       ["USA", "PAR", "Los Angeles", "2026-06-12T22:00:00.000Z"],
       ["CAN", "BIH", "Vancouver", "2026-06-13T01:00:00.000Z"],
@@ -203,6 +207,8 @@ const fixtures = [
   {
     dayKey: "2026-06-13",
     label: "Saturday, June 13",
+    stage: "Group stage",
+    round: "Group Round 1",
     matches: [
       ["AUS", "TUR", "Houston", "2026-06-13T19:00:00.000Z"],
       ["SWE", "TUN", "Boston", "2026-06-13T22:00:00.000Z"],
@@ -211,6 +217,8 @@ const fixtures = [
   {
     dayKey: "2026-06-17",
     label: "Wednesday, June 17",
+    stage: "Group stage",
+    round: "Group Round 2",
     matches: [
       ["ENG", "CRO", "Dallas", "2026-06-17T20:00:00.000Z"],
       ["ARG", "AUT", "Kansas City", "2026-06-17T23:00:00.000Z"],
@@ -314,6 +322,8 @@ export const worldCup2026 = mutation({
             await ctx.db.patch(existingMatch._id, {
               matchNumber,
               externalMatchId,
+              stage: fixtureDay.stage,
+              round: fixtureDay.round,
               kickoffAt,
               venue,
               status: "scheduled",
@@ -327,6 +337,8 @@ export const worldCup2026 = mutation({
             await ctx.db.patch(existingMatch._id, {
               matchNumber,
               externalMatchId,
+              stage: fixtureDay.stage,
+              round: fixtureDay.round,
               kickoffAt,
               venue,
             });
@@ -340,6 +352,8 @@ export const worldCup2026 = mutation({
           dayKey: fixtureDay.dayKey,
           matchNumber,
           externalMatchId,
+          stage: fixtureDay.stage,
+          round: fixtureDay.round,
           kickoffAt,
           homeTeamId,
           awayTeamId,

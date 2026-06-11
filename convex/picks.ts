@@ -7,12 +7,14 @@ import {
   pickOutcome,
   selectedTeamIsInMatch,
 } from "./rules";
+import { dayWindow, groupScheduleMode, pickWindowKeyForPick, roundWindowForMatch } from "./pickWindows";
 import { requireUserId } from "./utils";
 
 export const upsert = mutation({
   args: {
     groupId: v.id("groups"),
     dayKey: v.string(),
+    pickWindowKey: v.optional(v.string()),
     matchId: v.id("matches"),
     teamId: v.id("teams"),
   },
@@ -37,7 +39,29 @@ export const upsert = mutation({
 
     const match = await ctx.db.get(args.matchId);
     if (!match || match.dayKey !== args.dayKey || match.tournamentId !== group.tournamentId) {
-      throw new Error("Choose a valid match for this group day.");
+      throw new Error("Choose a valid match for this group.");
+    }
+    const scheduleMode = groupScheduleMode(group);
+    const day = await ctx.db
+      .query("tournamentDays")
+      .withIndex("by_tournament_day", (q) =>
+        q.eq("tournamentId", group.tournamentId).eq("dayKey", match.dayKey),
+      )
+      .unique();
+    const matchWindow =
+      scheduleMode === "day"
+        ? dayWindow(
+            day ?? {
+              dayKey: match.dayKey,
+              label: match.dayKey,
+              sortOrder: Number(match.dayKey.replaceAll("-", "")),
+              firstKickoffAt: match.kickoffAt,
+            },
+          )
+        : roundWindowForMatch(match, day ?? undefined);
+    const pickWindowKey = args.pickWindowKey ?? args.dayKey;
+    if (matchWindow.key !== pickWindowKey) {
+      throw new Error("Choose a match from the selected pick window.");
     }
 
     const now = Date.now();
@@ -48,23 +72,18 @@ export const upsert = mutation({
       throw new Error("Choose a team from the selected match.");
     }
 
-    const existingPick = await ctx.db
+    const memberPicks = await ctx.db
       .query("picks")
-      .withIndex("by_member_day", (q) =>
-        q.eq("membershipId", membership._id).eq("dayKey", args.dayKey),
-      )
-      .unique();
+      .withIndex("by_member", (q) => q.eq("membershipId", membership._id))
+      .collect();
+    const existingPick = memberPicks.find((pick) => pickWindowKeyForPick(pick) === pickWindowKey);
     const existingPickMatch = existingPick ? await ctx.db.get(existingPick.matchId) : null;
 
     if (!canChangePick(existingPickMatch, now)) {
       throw new Error("Your pick has locked because that match has kicked off.");
     }
 
-    const allPreviousPicks = await ctx.db
-      .query("picks")
-      .withIndex("by_member", (q) => q.eq("membershipId", membership._id))
-      .collect();
-    if (hasTeamAlreadyBeenUsed(allPreviousPicks, args.teamId, args.dayKey, group.selectionResetAt)) {
+    if (hasTeamAlreadyBeenUsed(memberPicks, args.teamId, pickWindowKey, group.selectionResetAt)) {
       throw new Error("You have already used that team in this group.");
     }
 
@@ -72,6 +91,8 @@ export const upsert = mutation({
       await ctx.db.patch(existingPick._id, {
         matchId: args.matchId,
         teamId: args.teamId,
+        dayKey: args.dayKey,
+        pickWindowKey,
         status: pickOutcome(match, args.teamId),
         updatedAt: now,
         lockedAt: undefined,
@@ -84,6 +105,7 @@ export const upsert = mutation({
       membershipId: membership._id,
       userId,
       dayKey: args.dayKey,
+      pickWindowKey,
       matchId: args.matchId,
       teamId: args.teamId,
       status: pickOutcome(match, args.teamId),
@@ -115,7 +137,7 @@ export const listMine = query({
 
     return await Promise.all(
       picks
-        .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+        .sort((a, b) => pickWindowKeyForPick(a).localeCompare(pickWindowKeyForPick(b)))
         .map(async (pick) => {
           const [team, match] = await Promise.all([ctx.db.get(pick.teamId), ctx.db.get(pick.matchId)]);
           const homeTeam = match ? await ctx.db.get(match.homeTeamId) : null;
