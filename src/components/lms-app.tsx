@@ -1218,9 +1218,21 @@ function TeamPickSide({
 }
 
 function TeamFlag({ team, size = "md" }: { team: TeamForUi; size?: "sm" | "md" | "lg" }) {
-  const sizeClass = size === "lg" ? "h-[3.15rem] w-[4.3rem] sm:w-20" : size === "sm" ? "h-5 w-7" : "h-8 w-12";
-  const emojiClass = size === "sm" ? "text-[1.35rem]" : size === "lg" ? "text-[4.45rem]" : "text-[2.9rem]";
   const code = team?.code ?? "?";
+  const squareFlags = new Set(["SUI"]);
+  const isSquareFlag = squareFlags.has(code);
+  const sizeClass = isSquareFlag
+    ? size === "lg"
+      ? "h-[3.35rem] w-[3.35rem] sm:size-16"
+      : size === "sm"
+        ? "size-5"
+        : "size-8"
+    : size === "lg"
+      ? "h-[3.15rem] w-[4.3rem] sm:w-20"
+      : size === "sm"
+        ? "h-5 w-7"
+        : "h-8 w-12";
+  const emojiClass = size === "sm" ? "text-[1.35rem]" : size === "lg" ? "text-[4.45rem]" : "text-[2.9rem]";
   const flagEmoji = getTeamFlagEmoji(code);
 
   return (
